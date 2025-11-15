@@ -66,3 +66,36 @@ class MDSState:
 
         # Persist rebuilt state to disk.
         self.store.save()
+
+    # ---------- Public Level 0 operations ----------
+
+    def put_metadata(self, path: str, value: dict) -> None:
+        """
+        Create or update metadata for a path with journaling.
+        """
+        txid = self.journal.begin("put", path=path)
+        self.journal.apply(txid, {
+            "action": "put",
+            "key": path,
+            "value": value,
+        })
+
+        self.store.put(path, value)
+        self.store.save()
+
+        self.journal.commit(txid)
+
+    def delete_metadata(self, path: str) -> None:
+        """
+        Delete metadata for a path with journaling.
+        """
+        txid = self.journal.begin("delete", path=path)
+        self.journal.apply(txid, {
+            "action": "delete",
+            "key": path,
+        })
+
+        self.store.delete(path)
+        self.store.save()
+
+        self.journal.commit(txid)

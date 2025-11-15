@@ -60,6 +60,33 @@ def run_level0_smoke() -> None:
     print("Level 0 smoke test PASSED.")
     print("Final metadata:", meta)
 
+def run_level0_crash_simulation() -> None:
+    cfg = load_level0_config()
+
+    # Clean slate.
+    if cfg.metadata_file.exists():
+        cfg.metadata_file.unlink()
+    if cfg.journal_file.exists():
+        cfg.journal_file.unlink()
+
+    # Start MDS and perform ops via public API.
+    state = MDSState.from_config(cfg)
+    state.put_metadata("/crash.txt", {"blocks": [7], "size": 777})
+    state.put_metadata("/keep.txt", {"blocks": [8], "size": 888})
+
+    # Simulate crash: delete snapshot but KEEP journal.
+    if cfg.metadata_file.exists():
+        cfg.metadata_file.unlink()
+
+    # New MDS instance after "crash".
+    state2 = MDSState.from_config(cfg)
+    meta = state2.store._meta
+
+    assert "/crash.txt" in meta
+    assert "/keep.txt" in meta
+    print("Crash simulation PASSED.")
+    print("Recovered metadata:", meta)
 
 if __name__ == "__main__":
     run_level0_smoke()
+    run_level0_crash_simulation()
