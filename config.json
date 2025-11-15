@@ -1,0 +1,9 @@
+{
+  "root_dir": ".",
+  "metadata_file": "mds_metadata.json",
+  "journal_file": "mds_journal.log",
+  "data_dir": "data",
+  "log_dir": "logs",
+  "level": 0
+}
+

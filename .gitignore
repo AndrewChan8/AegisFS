@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.venv/
+.env/
+
+# Editors
+.vscode/
+.idea/
+
+# AegisFS runtime files
+mds_metadata.json
+mds_journal.log
+logs/*
+data/*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
