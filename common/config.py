@@ -1,3 +1,15 @@
+"""
+Central config loader for AegisFS.
+
+Reads config.json and exposes absolute filesystem paths for:
+- metadata file
+- journal file
+- data directory
+- log directory
+
+This keeps all modules consistent and prevents hard-coded paths.
+"""
+
 from __future__ import annotations
 
 import json

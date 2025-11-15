@@ -1,3 +1,11 @@
+"""
+Level 0 metadata storage.
+
+Simple in-memory dict backed by a JSON file.
+No durability guarantees by itself — journaling enforces correctness.
+All MDS metadata mutations must go through this layer.
+"""
+
 from __future__ import annotations
 
 import json
@@ -23,6 +31,8 @@ class MetadataStore:
             self._meta = {}
 
     def save(self) -> None:
+        # Full overwrite; atomicity guaranteed at Level 0 by journaling,
+        # not by this function.
         self.path.write_text(json.dumps(self._meta, indent=2))
 
     def get(self, key: str) -> Any:
