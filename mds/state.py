@@ -32,7 +32,7 @@ class MDSState:
 
     def recover_from_journal(self) -> None:
         """
-        Rebuild metadata from committed APPLY records.
+        Rebuild metadata from committed APPLY records. Only rebuilds from COMMIT and disregards else.
 
         APPLY records must have:
           - action: "put" or "delete"

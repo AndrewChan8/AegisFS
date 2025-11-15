@@ -89,12 +89,16 @@ class Journal:
         """
         Log a state change associated with an existing transaction.
         Does not touch metadata itself; caller is responsible for applying it.
+        Shows what will be mutated
         """
         rec = JournalRecord(txid=txid, op=JournalOp.APPLY, data=data)
         self.append(rec)
 
     def commit(self, txid: int) -> None:
-        """Mark a transaction as committed (durable)."""
+        """
+        Mark a transaction as committed (durable).
+        Concrete proof that a transaction was fully mutated
+        """
         rec = JournalRecord(txid=txid, op=JournalOp.COMMIT, data={})
         self.append(rec)
 
