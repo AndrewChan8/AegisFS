@@ -38,6 +38,21 @@ def cmd_stat(c: AegisClient, path: str) -> None:
         return
     print(f"[Client] Metadata: {meta}")
 
+def cmd_ls(c: AegisClient) -> None:
+    print("[Client] Listing all paths...")
+    paths = c.list_paths()
+    if not paths:
+        print("(empty)")
+        return
+    for p in sorted(paths):
+        print(p)
+
+
+def cmd_rm(c: AegisClient, path: str) -> None:
+    print(f"[Client] Deleting {path!r}...")
+    c.delete_file(path)
+    print("[Client] Delete complete.")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="aegisfs", description="AegisFS command-line client")
@@ -53,6 +68,13 @@ def main() -> None:
     p_stat = sub.add_parser("stat", help="show file metadata")
     p_stat.add_argument("path")
 
+    # NEW: ls
+    p_ls = sub.add_parser("ls", help="list all paths")
+
+    # NEW: rm
+    p_rm = sub.add_parser("rm", help="delete a file")
+    p_rm.add_argument("path")
+
     args = parser.parse_args()
     c = AegisClient()
 
@@ -62,6 +84,10 @@ def main() -> None:
         cmd_read(c, args.path)
     elif args.cmd == "stat":
         cmd_stat(c, args.path)
+    elif args.cmd == "ls":
+        cmd_ls(c)
+    elif args.cmd == "rm":
+        cmd_rm(c, args.path)
 
 
 if __name__ == "__main__":

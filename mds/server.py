@@ -36,6 +36,17 @@ def handle_request(state: MDSState, req: Dict[str, Any]) -> Dict[str, Any]:
         value = state.store.get(path)
         return {"ok": True, "value": value}
 
+    # NEW: delete metadata entry
+    if op == "delete_meta":
+        path = args["path"]
+        state.delete_metadata(path)
+        return {"ok": True}
+
+    # NEW: list all metadata keys (paths)
+    if op == "list_meta":
+        paths = list(state.store._meta.keys())
+        return {"ok": True, "paths": paths}
+
     return {"ok": False, "error": f"unknown_op:{op}"}
 
 

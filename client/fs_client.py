@@ -178,3 +178,44 @@ class AegisClient:
         if data is None:
             return None
         return data.decode("utf-8")
+
+    # ------------------------------------------------------------
+    # Extra block + file helpers for CLI
+    # ------------------------------------------------------------
+    def delete_block(self, block_id: str) -> None:
+        """Delete a block from the DataNode (best-effort)."""
+        resp = self._dn_rpc({
+            "op": "delete_block",
+            "args": {"block_id": block_id},
+        })
+        if not resp.get("ok", False):
+            raise RuntimeError(f"DataNode delete_block failed: {resp}")
+
+    def list_paths(self) -> list[str]:
+        """Return a list of all paths known to the MDS."""
+        resp = self._mds_rpc({"op": "list_meta", "args": {}})
+        if not resp.get("ok", False):
+            return []
+        return resp.get("paths", [])
+
+    def delete_file(self, path: str) -> None:
+        """
+        Delete a file:
+
+            1. Fetch metadata from MDS
+            2. Delete all referenced blocks from the DataNode
+            3. Remove the metadata entry on the MDS
+        """
+        meta = self.get_meta(path)
+        if not meta:
+            # nothing to do
+            return
+
+        # delete blocks first (best-effort)
+        for block_id in meta.get("blocks", []):
+            self.delete_block(block_id)
+
+        # then delete metadata
+        resp = self._mds_rpc({"op": "delete_meta", "args": {"path": path}})
+        if not resp.get("ok", False):
+            raise RuntimeError(f"MDS delete_meta failed: {resp}")
