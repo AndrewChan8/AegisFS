@@ -5,25 +5,16 @@ This module exposes the local block storage (DataNodeStorage) over a simple
 TCP-based JSON RPC protocol. The server accepts one RPC request per connection,
 executes the corresponding storage operation, and returns a JSON response.
 
-Responsibilities:
-  - Wrap DataNodeStorage methods behind network-accessible operations
-  - Perform no metadata logic, no block placement decisions
-  - Remain stateless aside from on-disk storage
-  - Follow the MDS's instructions for where blocks should be written or read
-
 Supported RPC ops:
   - ping
-  - store_block(block_id, data)
+  - store_block(block_id, data_b64)
   - read_block(block_id)
   - delete_block(block_id)
-
-This module is intentionally minimal and synchronous to keep correctness simple.
-It forms the foundation for higher-level features such as replication and
-pipeline-based client writes.
 """
 
 from __future__ import annotations
 
+import base64
 import socket
 import threading
 from pathlib import Path
@@ -43,7 +34,8 @@ def handle_request(store: DataNodeStorage, req: Dict[str, Any]) -> Dict[str, Any
 
     if op == "store_block":
         block_id = args["block_id"]
-        data = args["data"].encode("utf-8")  # for now, simple text blocks
+        data_b64 = args["data_b64"]
+        data = base64.b64decode(data_b64.encode("ascii"))
         store.write_block(block_id, data)
         return {"ok": True}
 
@@ -52,7 +44,8 @@ def handle_request(store: DataNodeStorage, req: Dict[str, Any]) -> Dict[str, Any
         data = store.read_block(block_id)
         if data is None:
             return {"ok": False, "error": "not_found"}
-        return {"ok": True, "data": data.decode("utf-8")}
+        data_b64 = base64.b64encode(data).decode("ascii")
+        return {"ok": True, "data_b64": data_b64}
 
     if op == "delete_block":
         block_id = args["block_id"]

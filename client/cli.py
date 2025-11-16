@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 AegisFS CLI
 -----------
@@ -5,19 +6,20 @@ AegisFS CLI
 Polished, presentation-ready CLI for AegisFS.
 
 Commands:
-    write <path> <text>           - write inline text into AegisFS
-    read <path>                  - read file contents from AegisFS
-    stat <path>                  - pretty-print file metadata
-    ls                           - list all files in AegisFS
-    rm <path>                    - delete a file (and its blocks)
-    put <local> <dfs_path>       - upload local UTF-8 text file into AegisFS
-    get <dfs_path> <local>       - download AegisFS file to local UTF-8 text file
+    aegisfs write <path> <text>        # text file write
+    aegisfs read  <path>               # text file read
+    aegisfs stat  <path>               # show metadata + blocks
+    aegisfs ls                         # list paths
+    aegisfs rm    <path>               # delete file
+    aegisfs put   <local> <path>       # upload binary/text file
+    aegisfs get   <path> <local>       # download binary/text file
 """
-from __future__ import annotations
 
 import argparse
-import sys
+import mimetypes
 import re
+import sys
+from typing import List
 
 from client.fs_client import AegisClient
 
@@ -80,7 +82,6 @@ ANSI_RE = re.compile(r"\x1b\[.*?m")
 
 
 def visible_length(s: str) -> int:
-    # Length without ANSI escape codes
     return len(ANSI_RE.sub("", s))
 
 
@@ -118,23 +119,28 @@ def cmd_stat(c: AegisClient, path: str) -> None:
         return
 
     size = meta.get("size", 0)
-    blocks = meta.get("blocks", []) or []
+    blocks: List[str] = meta.get("blocks", []) or []
+    mime = meta.get("mime")
+    filename = meta.get("filename")
 
     BOX_WIDTH = 60  # total width including borders
 
     def inside(line: str) -> str:
-        inner_width = BOX_WIDTH - 2  # between the two border chars
-        # we print "│ " + content + "│" -> content width = inner_width - 1
+        inner_width = BOX_WIDTH - 2
         padded = pad_line(line, inner_width - 1)
         return "│ " + padded + "│"
 
-    print("┌" + "─" * (BOX_WIDTH - 2) + "┘".replace("┘", "┐"))
+    print("┌" + "─" * (BOX_WIDTH - 2) + "┐")
     print(inside("File Metadata"))
     print("│" + "─" * (BOX_WIDTH - 2) + "│")
 
     print(inside(f"Path   : {path}"))
     print(inside(f"Size   : {size}"))
     print(inside(f"Blocks : {len(blocks)}"))
+    if mime:
+        print(inside(f"MIME   : {mime}"))
+    if filename:
+        print(inside(f"Name   : {filename}"))
 
     print(inside("Block IDs:"))
     for b in blocks:
@@ -153,7 +159,7 @@ def cmd_ls(c: AegisClient) -> None:
             print("(empty filesystem)")
         return
 
-    header = f"{'PATH':<24} {'SIZE':>8} {'BLOCKS':>8}"
+    header = f"{'PATH':<32} {'SIZE':>10} {'BLOCKS':>8}"
     sep = "-" * len(header)
     if USE_COLOR:
         print(BOLD + header + RESET)
@@ -165,7 +171,7 @@ def cmd_ls(c: AegisClient) -> None:
         meta = c.get_meta(p) or {}
         size = meta.get("size", 0)
         blocks = len(meta.get("blocks", []) or [])
-        print(f"{p:<24} {size:>8} {blocks:>8}")
+        print(f"{p:<32} {size:>10} {blocks:>8}")
 
 
 def cmd_rm(c: AegisClient, path: str) -> None:
@@ -178,36 +184,35 @@ def cmd_rm(c: AegisClient, path: str) -> None:
     ok("delete complete")
 
 
-def cmd_put(c: AegisClient, local_path: str, dfs_path: str) -> None:
-    """Upload a local UTF-8 text file into AegisFS."""
-    banner("put", f"{local_path} → {dfs_path}")
+def cmd_put(c: AegisClient, local: str, path: str) -> None:
+    import os
+    banner("put", f"{local} → {path}")
     try:
-        with open(local_path, "r", encoding="utf-8") as f:
-            text = f.read()
+        with open(local, "rb") as f:
+            data = f.read()
     except OSError as e:
-        err(f"could not read local file: {e}")
+        err(f"failed to read local file: {e}")
         return
 
-    info(f"uploading {len(text)} bytes")
-    c.write_file(dfs_path, text)
+    info(f"uploading {len(data)} bytes")
+    mime, _ = mimetypes.guess_type(local)
+    c.write_bytes(path, data, mime=mime, filename=os.path.basename(local))
     ok("upload complete")
 
 
-def cmd_get(c: AegisClient, dfs_path: str, local_path: str) -> None:
-    """Download a file from AegisFS to a local UTF-8 text file."""
-    banner("get", f"{dfs_path} → {local_path}")
-    data = c.read_file(dfs_path)
+def cmd_get(c: AegisClient, path: str, local: str) -> None:
+    banner("get", f"{path} → {local}")
+    data = c.read_bytes(path)
     if data is None:
-        err(f"file not found: {dfs_path}")
+        err(f"file not found or unreadable: {path}")
         return
-
+    info(f"downloading {len(data)} bytes")
     try:
-        with open(local_path, "w", encoding="utf-8") as f:
+        with open(local, "wb") as f:
             f.write(data)
     except OSError as e:
-        err(f"could not write local file: {e}")
+        err(f"failed to write local file: {e}")
         return
-
     ok("download complete")
 
 
@@ -219,11 +224,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="aegisfs", description="AegisFS command-line client")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_write = sub.add_parser("write", help="write a file (inline text)")
+    p_write = sub.add_parser("write", help="write a text file")
     p_write.add_argument("path")
     p_write.add_argument("text")
 
-    p_read = sub.add_parser("read", help="read a file")
+    p_read = sub.add_parser("read", help="read a text file")
     p_read.add_argument("path")
 
     p_stat = sub.add_parser("stat", help="show file metadata")
@@ -234,13 +239,13 @@ def main() -> None:
     p_rm = sub.add_parser("rm", help="delete a file")
     p_rm.add_argument("path")
 
-    p_put = sub.add_parser("put", help="upload local UTF-8 text file into AegisFS")
-    p_put.add_argument("local_path")
-    p_put.add_argument("dfs_path")
+    p_put = sub.add_parser("put", help="upload a local file into AegisFS")
+    p_put.add_argument("local")
+    p_put.add_argument("path")
 
-    p_get = sub.add_parser("get", help="download AegisFS file to local UTF-8 text file")
-    p_get.add_argument("dfs_path")
-    p_get.add_argument("local_path")
+    p_get = sub.add_parser("get", help="download a file from AegisFS")
+    p_get.add_argument("path")
+    p_get.add_argument("local")
 
     args = parser.parse_args()
     c = AegisClient()
@@ -256,9 +261,9 @@ def main() -> None:
     elif args.cmd == "rm":
         cmd_rm(c, args.path)
     elif args.cmd == "put":
-        cmd_put(c, args.local_path, args.dfs_path)
+        cmd_put(c, args.local, args.path)
     elif args.cmd == "get":
-        cmd_get(c, args.dfs_path, args.local_path)
+        cmd_get(c, args.path, args.local)
 
 
 if __name__ == "__main__":

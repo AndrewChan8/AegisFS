@@ -1,7 +1,6 @@
 # app.py — AegisFS Visualizer
 from __future__ import annotations
 
-import textwrap
 import streamlit as st
 from client.fs_client import AegisClient
 
@@ -13,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("AegisFS 🔐 Distributed Filesystem Viewer")
-st.caption("Metadata server + block storage visualized in real time.")
+st.caption("Metadata server + block storage visualized in real time (text, images, audio).")
 
 # ─────────────────────────────────────────────────────────────
 # Demo controls
@@ -37,7 +36,7 @@ with col_demo_right:
 st.markdown("---")
 
 # ─────────────────────────────────────────────────────────────
-# Browser upload → AegisFS
+# Browser upload → AegisFS (binary-safe)
 # ─────────────────────────────────────────────────────────────
 
 st.subheader("Upload a file into AegisFS")
@@ -48,9 +47,7 @@ with upload_cols[0]:
     uploaded = st.file_uploader("Choose a file", type=None)
 
 with upload_cols[1]:
-    default_path = ""
-    if uploaded is not None:
-        default_path = f"/uploads/{uploaded.name}"
+    default_path = f"/uploads/{uploaded.name}" if uploaded is not None else ""
     target_path = st.text_input("Target path in AegisFS", value=default_path)
 
 with upload_cols[2]:
@@ -64,14 +61,18 @@ if do_upload:
     elif not target_path.startswith("/"):
         st.error("Path must start with '/'.")
     else:
-        try:
-            # Treat upload as UTF-8 text payload, like CLI put/write.
-            data_bytes = uploaded.getvalue()
-            text = data_bytes.decode("utf-8")
-            client.write_file(target_path, text)
-            st.success(f"Uploaded {uploaded.name} → {target_path} ({len(data_bytes)} bytes)")
-        except UnicodeDecodeError:
-            st.error("File is not UTF-8 text; current demo client stores text files only.")
+        data_bytes = uploaded.getvalue()
+        mime = uploaded.type or "application/octet-stream"
+        client.write_bytes(
+            target_path,
+            data_bytes,
+            mime=mime,
+            filename=uploaded.name,
+        )
+        st.success(
+            f"Uploaded {uploaded.name} → {target_path} "
+            f"({len(data_bytes)} bytes, {mime})"
+        )
 
 st.markdown("---")
 
@@ -106,6 +107,8 @@ with col_right:
         size = meta.get("size", 0)
         blocks = meta.get("blocks", []) or []
         num_blocks = len(blocks)
+        mime = meta.get("mime")
+        filename = meta.get("filename")
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Size (bytes)", f"{size}")
@@ -113,17 +116,16 @@ with col_right:
         m3.metric("Block Size", f"{client.BLOCK_SIZE} bytes")
 
         st.markdown("#### Raw Metadata")
-        st.code(
-            textwrap.dedent(f"""\
-            {{
-                "path": "{selected_path}",
-                "size": {size},
-                "blocks": [
-                    {", ".join(f'"{b}"' for b in blocks)}
-                ]
-            }}"""),
-            language="json",
-        )
+        meta_json = {
+            "path": selected_path,
+            "size": size,
+            "blocks": blocks,
+        }
+        if mime:
+            meta_json["mime"] = mime
+        if filename:
+            meta_json["filename"] = filename
+        st.json(meta_json)
 
         st.markdown("#### Block Layout")
         if not blocks:
@@ -142,17 +144,24 @@ with col_right:
             dot_src = "\n".join(dot_lines)
             st.graphviz_chart(dot_src)
 
-        st.markdown("#### File Preview")
-        try:
-            text = client.read_file(selected_path)
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-            text = None
+        st.markdown("#### Preview")
+        data = client.read_bytes(selected_path)
 
-        if text is None:
+        if data is None:
             st.warning("File data missing or unreadable.")
+        elif mime and mime.startswith("image/"):
+            st.image(data, caption=f"{selected_path} ({mime})")
+        elif mime and mime.startswith("audio/"):
+            st.audio(data, format=mime)
+        elif mime and mime.startswith("video/"):
+            st.video(data)
         else:
-            preview = text[:2000]
-            if len(text) > len(preview):
-                preview += "\n\n… (truncated for preview) …"
-            st.text(preview)
+            # Try to show text; fallback to binary info
+            try:
+                text = data.decode("utf-8")
+                preview = text[:2000]
+                if len(text) > len(preview):
+                    preview += "\n\n… (truncated for preview) …"
+                st.text(preview)
+            except UnicodeDecodeError:
+                st.info(f"Binary file ({mime or 'unknown type'}) — no text preview.")
