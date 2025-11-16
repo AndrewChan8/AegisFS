@@ -1,58 +1,178 @@
-from __future__ import annotations
 """
 AegisFS CLI
 -----------
 
-Simple command-line interface on top of AegisClient.
-
-Commands:
-    aegisfs write <path> <text>
-    aegisfs read <path>
-    aegisfs stat <path>
+Polished, presentation-ready CLI for AegisFS.
 """
 
+from __future__ import annotations
+
 import argparse
+import sys
+import re
+
 from client.fs_client import AegisClient
 
+# ─────────────────────────────────────────────────────────────
+# Styling
+# ─────────────────────────────────────────────────────────────
+
+USE_COLOR = sys.stdout.isatty()
+
+BOLD  = "\033[1m" if USE_COLOR else ""
+DIM   = "\033[2m" if USE_COLOR else ""
+GREEN = "\033[32m" if USE_COLOR else ""
+RED   = "\033[31m" if USE_COLOR else ""
+CYAN  = "\033[36m" if USE_COLOR else ""
+RESET = "\033[0m" if USE_COLOR else ""
+
+
+def banner(op: str, detail: str = "") -> None:
+    title = f"AegisFS ▸ {op}"
+    if detail:
+        title += f" {detail}"
+    width = max(len(title) + 4, 40)
+    line = "─" * width
+    if USE_COLOR:
+        print(f"{CYAN}{line}{RESET}")
+        print(f"{CYAN}│ {BOLD}{title}{RESET}{CYAN} │{RESET}")
+        print(f"{CYAN}{line}{RESET}")
+    else:
+        print(line)
+        print(f"| {title} |")
+        print(line)
+
+
+def info(msg: str) -> None:
+    if USE_COLOR:
+        print(f"{DIM}… {msg}{RESET}")
+    else:
+        print(f"... {msg}")
+
+
+def ok(msg: str) -> None:
+    if USE_COLOR:
+        print(f"{GREEN}✔ {msg}{RESET}")
+    else:
+        print(f"[OK] {msg}")
+
+
+def err(msg: str) -> None:
+    if USE_COLOR:
+        print(f"{RED}✖ {msg}{RESET}")
+    else:
+        print(f"[ERR] {msg}")
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers for fixed-width stat box
+# ─────────────────────────────────────────────────────────────
+
+ANSI_RE = re.compile(r"\x1b\[.*?m")
+
+
+def visible_length(s: str) -> int:
+    # Length without ANSI escape codes
+    return len(ANSI_RE.sub("", s))
+
+
+def pad_line(content: str, width: int) -> str:
+    vis = visible_length(content)
+    pad = max(0, width - vis)
+    return content + (" " * pad)
+
+
+# ─────────────────────────────────────────────────────────────
+# Commands
+# ─────────────────────────────────────────────────────────────
 
 def cmd_write(c: AegisClient, path: str, text: str) -> None:
-    print(f"[Client] Writing {len(text)} bytes to {path!r}...")
+    banner("write", path)
+    info(f"{len(text)} bytes")
     c.write_file(path, text)
-    print("[Client] Write complete.")
+    ok("write complete")
 
 
 def cmd_read(c: AegisClient, path: str) -> None:
-    print(f"[Client] Reading {path!r}...")
+    banner("read", path)
     data = c.read_file(path)
     if data is None:
-        print("[Client] ERROR: file not found")
+        err(f"file not found: {path}")
     else:
         print(data)
 
 
 def cmd_stat(c: AegisClient, path: str) -> None:
-    print(f"[Client] Fetching metadata for {path!r}...")
+    banner("stat", path)
     meta = c.get_meta(path)
     if not meta:
-        print("[Client] ERROR: file not found")
+        err(f"file not found: {path}")
         return
-    print(f"[Client] Metadata: {meta}")
+
+    size = meta.get("size", 0)
+    blocks = meta.get("blocks", []) or []
+
+    BOX_WIDTH = 60  # total width including borders
+
+    def inside(line: str) -> str:
+        inner_width = BOX_WIDTH - 2  # between the two border chars
+        # we print "│ " + content + "│" -> content width = inner_width - 1
+        padded = pad_line(line, inner_width - 1)
+        return "│ " + padded + "│"
+
+    print("┌" + "─" * (BOX_WIDTH - 2) + "┐")
+    print(inside("File Metadata"))
+    print("│" + "─" * (BOX_WIDTH - 2) + "│")
+
+    print(inside(f"Path   : {path}"))
+    print(inside(f"Size   : {size}"))
+    print(inside(f"Blocks : {len(blocks)}"))
+
+    print(inside("Block IDs:"))
+    for b in blocks:
+        print(inside(f"  - {b}"))
+
+    print("└" + "─" * (BOX_WIDTH - 2) + "┘")
+
 
 def cmd_ls(c: AegisClient) -> None:
-    print("[Client] Listing all paths...")
-    paths = c.list_paths()
+    banner("ls")
+    paths = sorted(c.list_paths())
     if not paths:
-        print("(empty)")
+        if USE_COLOR:
+            print(DIM + "(empty filesystem)" + RESET)
+        else:
+            print("(empty filesystem)")
         return
-    for p in sorted(paths):
-        print(p)
+
+    header = f"{'PATH':<24} {'SIZE':>8} {'BLOCKS':>8}"
+    sep = "-" * len(header)
+    if USE_COLOR:
+        print(BOLD + header + RESET)
+    else:
+        print(header)
+    print(sep)
+
+    for p in paths:
+        meta = c.get_meta(p) or {}
+        size = meta.get("size", 0)
+        blocks = len(meta.get("blocks", []) or [])
+        print(f"{p:<24} {size:>8} {blocks:>8}")
 
 
 def cmd_rm(c: AegisClient, path: str) -> None:
-    print(f"[Client] Deleting {path!r}...")
+    banner("rm", path)
+    meta = c.get_meta(path)
+    if not meta:
+        err(f"file not found: {path}")
+        return
     c.delete_file(path)
-    print("[Client] Delete complete.")
+    ok("delete complete")
 
+
+# ─────────────────────────────────────────────────────────────
+# Entry Point
+# ─────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="aegisfs", description="AegisFS command-line client")
@@ -68,10 +188,8 @@ def main() -> None:
     p_stat = sub.add_parser("stat", help="show file metadata")
     p_stat.add_argument("path")
 
-    # NEW: ls
-    p_ls = sub.add_parser("ls", help="list all paths")
+    sub.add_parser("ls", help="list all paths")
 
-    # NEW: rm
     p_rm = sub.add_parser("rm", help="delete a file")
     p_rm.add_argument("path")
 

@@ -1,4 +1,4 @@
-# AegisFS — Distributed File System (Level 0–2)
+# AegisFS — Distributed File System
 
 AegisFS is a minimal distributed filesystem featuring:
 
