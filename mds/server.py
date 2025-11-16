@@ -1,3 +1,12 @@
+"""
+Metadata Server TCP daemon (Level 1).
+
+Starts a JSON-RPC TCP server that accepts client requests (put_meta/get_meta),
+parses them via RpcConnection, and dispatches to MDSState. This exposes the
+Level-0 journaled metadata engine over the network and forms the front-door
+API for clients and, later, DataNode coordination.
+"""
+
 from __future__ import annotations
 
 import socket

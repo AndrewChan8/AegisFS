@@ -1,3 +1,12 @@
+"""
+JSON-over-TCP RPC layer.
+
+Provides RpcConnection, a thin wrapper around a TCP socket that sends and
+receives newline-delimited JSON objects. Handles buffering, message framing,
+and JSON encoding/decoding so higher-level components can think in terms of
+Python dicts instead of raw bytes.
+"""
+
 from __future__ import annotations
 
 import json

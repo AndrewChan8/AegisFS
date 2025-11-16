@@ -1,3 +1,12 @@
+"""
+Write-ahead logging for the Metadata Server.
+
+Implements an append-only JSONL journal with BEGIN / APPLY / COMMIT / ABORT
+records. The journal is the durable source of truth for metadata mutations.
+Recovery scans the log and replays only committed transactions to rebuild
+the MetadataStore after a crash.
+"""
+
 from __future__ import annotations
 
 import json

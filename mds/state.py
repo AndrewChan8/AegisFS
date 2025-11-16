@@ -1,3 +1,15 @@
+"""
+MDSState: the core of the Metadata Server.
+
+Wraps the write-ahead journal and the MetadataStore into a transactional,
+crash-safe state machine. All metadata mutations go through:
+
+    BEGIN → APPLY → store.put/save → COMMIT
+
+On startup, recover_from_journal() rebuilds metadata purely from the
+journal, ignoring any corrupted or partial snapshot files.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
